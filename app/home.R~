@@ -1,0 +1,20 @@
+historyUI <- function() {
+    sidebarLayout(
+        sidebarPanel(width = 2,
+                     selectizeInput("hospitalIn", "Select asset", getAssets()),
+                     htmlOutput("tlDateRangeUI"),
+                     htmlOutput("resetDatesUI")),
+        mainPanel(
+            tabsetPanel(type = "tabs",
+                        tabPanel("By Date",
+                                 column(12, withSpinner(plotlyOutput("historyPlot"))),
+
+                                 column(12, div(style = "font-size: 80%",
+                                                DT::dataTableOutput("historyWOs"))),
+                                 column(12, withSpinner(plotlyOutput("tlSMUHoursPlot"))),
+                                 br(),
+                                 column(12, verbatimTextOutput("tlSMUHoursSum")))
+                        )
+        )
+    )
+}

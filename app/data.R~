@@ -1,0 +1,141 @@
+######################################################################
+## utilities
+######################################################################
+
+loadData <- function(file = "./failure-oil-joined.rds") {
+    readRDS(file) %>%
+        mutate(failure = ifelse(failure %in% TRUE, 1,
+                         ifelse(wo_type == "BREAKDOWN", 1, 0)))
+}
+
+readSMUHours <- function(file = "./smu-hrs-smooth.rds") {
+    import(file) %>%
+        select(equip_id, start_date, end_date, reading, daily_inc)
+}
+
+readOilSOS <- function(file = "./sos-history-fuel-clean.rds") {
+    oil <- readRDS(file) %>%
+        filter(me_comp_name == "ENGINE",
+               str_detect(asset_id, "^DZ")) %>%
+        mutate(sample_date = dmy(sample_date),
+               join_date = sample_date,
+               join_asset = asset_id) %>%
+        setDT()
+    smu <- readSMUHours() %>%
+        mutate(join_date = start_date,
+               join_asset = equip_id) %>%
+        setDT()
+
+    smu[oil, on = .(join_asset, join_date), roll = Inf] %>%
+        arrange(asset_id, join_date) %>%
+        mutate(machine_smu = reading - (as.numeric(difftime(end_date, join_date, units = "days")) * daily_inc)) %>%
+        group_by(asset_id) %>%
+        arrange(join_date) %>%
+        mutate(smu_diff = machine_smu - lag(machine_smu)) %>%
+        ungroup() %>%
+        as.data.frame()
+        ##select(-equip_id, -start_date, -end_date, -reading, -daily_inc, -join_date, -join_asset)
+}
+
+######################################################################
+## oil data db
+######################################################################
+
+startDB <- function() {
+    c <- dbConnect(RSQLite::SQLite(), ":memory:")
+    dbWriteTable(c, "oilData", readOilSOS())
+    dbWriteTable(c, "workOrders", loadData())
+    c
+}
+
+######################################################################
+## oil data api
+######################################################################
+
+getElementHistory <- function(equip_id, elements) {
+    r <- run_pipeline(
+        function(parameters){
+            print(parameters)
+            query <- paste0("select sample_date, asset_id as equip_id, {{{element}}} as value, '{{{element}}}' as element from oilData ",
+                            "where asset_id = '{{{equip_id}}}' order by sample_date")
+            dbGetQuery(oilCon, whisker.render(query, parameters)) %>%
+                filter(!is.na(value)) %>%
+                mutate(sample_date = as.Date(sample_date, origin = "1970-01-01"))
+        },
+        data.frame(element = elements, equip_id = equip_id)
+    )
+    Reduce(rbind, r)
+}
+
+getFailureDates <- function(equip_id) {
+    r <- run_pipeline(
+        function(parameters){
+            query <- paste0("select created, equip_id from workOrders where equip_id = '{{{equip_id}}}' and failure = 1")
+            print(whisker.render(query, parameters))
+            dbGetQuery(oilCon, whisker.render(query, parameters)) %>%
+                mutate(date = as.Date(created, origin = "1970-01-01")) %>%
+                select(-created)
+        },
+        data.frame(equip_id = equip_id)
+    )
+    Reduce(rbind, r)
+}
+
+getScheduledDates <- function(equip_id) {
+    r <- run_pipeline(
+        function(parameters){
+            query <- paste0("select created, equip_id from workOrders where equip_id = '{{{equip_id}}}' and failure = 0")
+            print(whisker.render(query, parameters))
+            dbGetQuery(oilCon, whisker.render(query, parameters)) %>%
+                mutate(date = as.Date(created, origin = "1970-01-01")) %>%
+                select(-created)
+        },
+        data.frame(equip_id = equip_id)
+    )
+    Reduce(rbind, r)
+}
+
+getEquipIds <- function() {
+    q <- "select distinct equip_id from workOrders order by equip_id"
+    dbGetQuery(oilCon, q) %>% pull(equip_id)
+}
+
+getOilDates <- function(assetid, t1 = 0, t2 = 1000000) {
+    run_pipeline(
+        function(parameters){
+            query <- paste0("select asset_id, sample_date, eval_code, smu_diff from oilData ",
+                            "where asset_id = '{{{asset_id}}}' and sample_date between ",
+                            "{{{t1}}} and {{{t2}}}")
+            dbGetQuery(oilCon, whisker.render(query, parameters)) %>%
+                mutate(sample_date = as.Date(sample_date, origin = "1970-01-01"))
+        },
+        data.frame(asset_id = assetid, t1 = as.numeric(t1), t2 = as.numeric(t2))
+    ) %>%
+        Reduce(rbind, .)
+}
+
+getWorkOrders <- function(assetID, t1 = 0, t2 = 1000000) {
+    run_pipeline(
+        function(parameters){
+            query <- paste0("select * from workOrders where equip_id = '{{{equip_id}}}' ",
+                            "and created between {{{t1}}} and {{{t2}}}")
+            dbGetQuery(oilCon, whisker.render(query, parameters)) %>%
+                mutate(failure = ifelse(failure %in% TRUE, 1,
+                                 ifelse(wo_type == "BREAKDOWN", 1, 0)),
+                       created = as.Date(created, origin = "1970-01-01"))
+        },
+        data.frame(equip_id = assetID, t1 = as.numeric(t1), t2 = as.numeric(t2))
+    ) %>%
+        Reduce(rbind, .)
+}
+
+getAssets <- function() {
+    q <- "select distinct equip_id from workOrders order by equip_id"
+    dbGetQuery(oilCon, q) %>% pull(equip_id)
+}
+
+getWOColumns <- function(cols) {
+    cols <- paste0(cols, collapse = ", ")
+    q <- paste0("select ", cols, " from workOrders")
+    dbGetQuery(oilCon, q)
+}

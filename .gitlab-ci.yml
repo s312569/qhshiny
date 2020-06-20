@@ -1,0 +1,40 @@
+# Auto-deploy script for an R shiny app builds an image tagged with branch name. If the master branch
+# provides a manual release as 'latest'.
+#
+# Needs a Dockerfile in the repo
+#
+# Replace "/PATH/APP" below with path of the shiny app in gitlab
+#
+# Save as .gitlab-ci.yml in repository root directory
+#
+image: docker:latest
+services:
+- docker:dind
+
+stages:
+- build
+- release
+- deploy
+
+variables:
+  TEST_IMAGE: registry.gitlab.com/mulvenna_work/oil-dash-pass/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHA
+  RELEASE_IMAGE: registry.gitlab.com/mulvenna_work/oil-dash-pass/master:latest
+
+before_script:
+  - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN registry.gitlab.com
+
+build:
+  stage: build
+  script:
+    - docker build --pull -t $TEST_IMAGE .
+    - docker push $TEST_IMAGE
+
+release:
+  stage: release
+  script:
+    - docker pull $TEST_IMAGE
+    - docker tag $TEST_IMAGE $RELEASE_IMAGE
+    - docker push $RELEASE_IMAGE
+  when: manual
+  only:
+    - master
