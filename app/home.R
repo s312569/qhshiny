@@ -13,7 +13,6 @@ plotTotalUsage <- function(data, options) {
                      name = "Month - Year") +
         scale_y_continuous(name = "DDD / 1000 patient-days")
 
-    print(options)
     if("points" %in% options) p <- p + geom_point()
     if("smooth" %in% options) p <- p + stat_smooth(colour = 'red')
     if("line" %in% options) p <- p + geom_line()
@@ -26,10 +25,6 @@ plotTotalUsage <- function(data, options) {
 ######################################################################
 ## UI
 ######################################################################
-
-checkboxesPlot <- function() {
-
-}
 
 homeUI <- function() {
     sidebarLayout(

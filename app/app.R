@@ -15,7 +15,7 @@ library(DBI)
 library(data.table)
 library(tidyverse)
 source("./config.R")
-source("./utilities.R") 2
+source("./utilities.R")
 source("./data.R")
 source("./home.R")
 
