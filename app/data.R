@@ -2,8 +2,8 @@
 ## utilities
 ######################################################################
 
-loadData <- function(file = "../data/2006-2020_Statedata.csv") {
-    import(file) %>%
+loadData <- function() {
+    import(dataFile) %>%
         mutate(usage = (ddd / obd) * 1) %>%
         filter(obd > 0, ddd > 0) %>%
         mutate(date = dmy(date)) %>%
@@ -14,7 +14,6 @@ loadData <- function(file = "../data/2006-2020_Statedata.csv") {
 }
 
 data <- loadData()
-start <- ymd(min(data$date))
 
 ######################################################################
 ## api

@@ -14,7 +14,8 @@ library(condusco)
 library(DBI)
 library(data.table)
 library(tidyverse)
-source("./utilities.R")
+source("./config.R")
+source("./utilities.R") 2
 source("./data.R")
 source("./home.R")
 
